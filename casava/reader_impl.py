@@ -46,6 +46,8 @@ class reader(object):
                 continue
             lengths = [len(line) for line in lines]
             eol_variances[eol] = variance(lengths)
+        if not eol_variances:
+            return encoding['encoding'], '\n'
         best_eol = min((item for item in eol_variances.items()), key=lambda (eol,var): var)
         for k in eol_variances:
             eol_variances[k] += 0.1
@@ -68,6 +70,8 @@ class reader(object):
                     cell_lengths += [len(cell) for cell in row]
             if cell_lengths:
                 sep_variances[sep_char] = variance(cell_lengths)
+        if not sep_variances:
+            return ',', chain(lines, it)
         for k in sep_variances:
             sep_variances[k] += 0.1
         # Prefer , if it's available and not too bad
