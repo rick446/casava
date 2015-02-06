@@ -27,7 +27,7 @@ class reader(object):
         try:
             while True:
                 row = rdr.next()
-                yield row
+                yield self._decode_row(row, encoding)
         except StopIteration:
             pass
 
