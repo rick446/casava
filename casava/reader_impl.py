@@ -47,8 +47,15 @@ class reader(object):
             lengths = [len(line) for line in lines]
             eol_variances[eol] = variance(lengths)
         best_eol = min((item for item in eol_variances.items()), key=lambda (eol,var): var)
+        for k in eol_variances:
+            eol_variances[k] += 0.1
+        # Prefer \r\n if it's available and not too bad
+        if '\r\n' in eol_variances and best_eol[1] / eol_variances['\r\n'] > 0.9:
+            best_eol_char = '\r\n'
+        else:
+            best_eol_char = best_eol[0]
         self.content_iter = chain([content_header], self.content_iter)
-        return encoding['encoding'], best_eol[0]
+        return encoding['encoding'], best_eol_char
 
     def _detect_sep(self, it):
         lines = accumulate_lines(it, self._sep_detection_size)
@@ -61,12 +68,19 @@ class reader(object):
                     cell_lengths += [len(cell) for cell in row]
             if cell_lengths:
                 sep_variances[sep_char] = variance(cell_lengths)
+        for k in sep_variances:
+            sep_variances[k] += 0.1
+        # Prefer , if it's available and not too bad
         if not sep_variances:   # There were no separations
             best_sep = ','
         else:
             best_sep = min((item for item in sep_variances.items()), key=lambda (eol,var): var)
+        if ',' in sep_variances and best_sep[1] / sep_variances[','] > 0.9:
+            best_sep_char = ','
+        else:
+            best_sep_char = best_sep[0]
         new_iter = chain(lines, it)
-        return best_sep[0], new_iter
+        return best_sep_char, new_iter
 
     def _decode_row(self, row, encoding):
         result = []
