@@ -1,7 +1,11 @@
 import csv
+import logging
 from itertools import chain
 
 import chardet
+
+
+log = logging.getLogger(__name__)
 
 
 class reader(object):
@@ -21,8 +25,10 @@ class reader(object):
 
     def __iter__(self):
         encoding, eol_char = self._detect_encoding_eol()
+        log.info('detect encoding, eol: %r, %r', encoding, eol_char)
         cur_line_iter = line_iter(self.content_iter, eol_char)
         sep_char, cur_line_iter = self._detect_sep(cur_line_iter)
+        log.info('detect delimiter: %r', sep_char)
         rdr = csv.reader(cur_line_iter, delimiter=sep_char)
         try:
             while True:
