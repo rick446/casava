@@ -1,3 +1,4 @@
+import re
 import csv
 import logging
 from itertools import chain
@@ -6,27 +7,27 @@ import chardet
 
 
 log = logging.getLogger(__name__)
+re_newline = re.compile('(\r(?=[^\n]))|\r\n')
 
 
 class reader(object):
-    EOL_DETECTION_SIZE = 10 * 1024
+    ENC_DETECTION_SIZE = 10 * 1024
     SEP_DETECTION_SIZE = 1024
-    EOL_CHARS = ['\n', '\r\n', '\r']
     SEP_CHARS = [',', ';', '\t']
 
     def __init__(
             self,
             content_iter,
-            eol_detection_size=None,
+            enc_detection_size=None,
             sep_detection_size=None):
         self.content_iter = content_iter
-        self._eol_detection_size = eol_detection_size or self.EOL_DETECTION_SIZE
+        self._enc_detection_size = enc_detection_size or self.ENC_DETECTION_SIZE
         self._sep_detection_size = sep_detection_size or self.SEP_DETECTION_SIZE
 
     def __iter__(self):
-        encoding, eol_char = self._detect_encoding_eol()
-        log.info('detect encoding, eol: %r, %r', encoding, eol_char)
-        cur_line_iter = line_iter(self.content_iter, eol_char)
+        encoding = self._detect_encoding()
+        log.info('detect encoding: %r', encoding)
+        cur_line_iter = line_iter(self.content_iter)
         sep_char, cur_line_iter = self._detect_sep(cur_line_iter)
         log.info('detect delimiter: %r', sep_char)
         rdr = csv.reader(cur_line_iter, delimiter=sep_char)
@@ -37,33 +38,11 @@ class reader(object):
         except StopIteration:
             pass
 
-    def _detect_encoding_eol(self):
-        '''(encoding, eol_char) = self.detect_eol()
-
-        Try to detect the end-of-line character in a content iterator.
-        This will reassign the content_iter
-        '''
-        content_header = accumulate_bytes(self.content_iter, self._eol_detection_size)
+    def _detect_encoding(self):
+        content_header = accumulate_bytes(self.content_iter, self._enc_detection_size)
         encoding = chardet.detect(content_header)
-        eol_variances = {}
-        for eol in self.EOL_CHARS:
-            lines = content_header.split(eol)[:-1]
-            if not lines:
-                continue
-            lengths = [len(line) for line in lines]
-            eol_variances[eol] = variance(lengths)
-        if not eol_variances:
-            return encoding['encoding'], '\n'
-        best_eol = min((item for item in eol_variances.items()), key=lambda (eol,var): var)
-        for k in eol_variances:
-            eol_variances[k] += 0.1
-        # Prefer \r\n if it's available and not too bad
-        if '\r\n' in eol_variances and best_eol[1] / eol_variances['\r\n'] > 0.9:
-            best_eol_char = '\r\n'
-        else:
-            best_eol_char = best_eol[0]
         self.content_iter = chain([content_header], self.content_iter)
-        return encoding['encoding'], best_eol_char
+        return encoding['encoding']
 
     def _detect_sep(self, it):
         lines = accumulate_lines(it, self._sep_detection_size)
@@ -84,7 +63,7 @@ class reader(object):
         if not sep_variances:   # There were no separations
             best_sep = ','
         else:
-            best_sep = min((item for item in sep_variances.items()), key=lambda (eol,var): var)
+            best_sep = min((item for item in sep_variances.items()), key=lambda (sep,var): var)
         if ',' in sep_variances and best_sep[1] / sep_variances[','] > 0.9:
             best_sep_char = ','
         else:
@@ -114,18 +93,19 @@ def auto_unicode(bytes):
         return bytes.decode('utf-8', 'ignore')
 
 
-def line_iter(content_iter, eol):
+def line_iter(content_iter):
     '''Iterate over lines separated by an eol character'''
     cur_buf = ''
     for chunk in content_iter:
         cur_buf += chunk
-        lines = cur_buf.split(eol)
+        cur_buf = re_newline.sub('\n', cur_buf)
+        lines = cur_buf.split('\n')
         for line in lines[:-1]:
-            yield line + eol
+            yield line + '\n'
         cur_buf = lines[-1]
     if cur_buf:
-        for line in cur_buf.split(eol):
-            yield line + eol
+        for line in cur_buf.split('\n'):
+            yield line + '\n'
 
 
 def accumulate_bytes(it, size):

@@ -101,7 +101,7 @@ def test_iter_lines():
     lines = [line + '\n' for line in lines]
     content = ''.join(lines)
     content_iter = (''.join(ch) for ch in _chunk(content, 4))
-    new_lines = list(reader_impl.line_iter(content_iter, '\n'))
+    new_lines = list(reader_impl.line_iter(content_iter))
     assert_equal(lines, new_lines)
 
 
