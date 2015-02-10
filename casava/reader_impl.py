@@ -40,7 +40,7 @@ class reader(object):
     def _detect_encoding_dialect(self):
         content_header = accumulate_bytes(self.content_iter, self._enc_detection_size)
         encoding = chardet.detect(content_header)
-        dialect = csv.Sniffer().sniff(content_header)
+        dialect = csv.Sniffer().sniff(content_header, delimiters=',;|\t\x1f')
         if dialect.lineterminator not in content_header:
             for eol in ['\r\n', '\n', '\r']:
                 if eol in content_header:
