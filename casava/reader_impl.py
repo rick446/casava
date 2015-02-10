@@ -28,7 +28,7 @@ class reader(object):
         log.info('detect encoding: %r', encoding)
         log.info('detect eol     : %r', dialect.lineterminator)
         log.info('detect delim   : %r', dialect.delimiter)
-        cur_line_iter = line_iter(self.content_iter, dialect.lineterminator)
+        cur_line_iter = ilines(self.content_iter)
         rdr = csv.reader(cur_line_iter, dialect)
         try:
             while True:
@@ -44,40 +44,8 @@ class reader(object):
             dialect = csv.Sniffer().sniff(content_header, delimiters=',;|\t\x1f')
         except csv.Error:
             dialect = csv.excel
-        if dialect.lineterminator not in content_header:
-            for eol in ['\r\n', '\n', '\r']:
-                if eol in content_header:
-                    dialect.lineterminator = eol
-                    break
         self.content_iter = chain([content_header], self.content_iter)
         return encoding['encoding'], dialect
-
-    def _detect_sep(self, it):
-        lines = accumulate_lines(it, self._sep_detection_size)
-        sep_variances = {}
-        for sep_char in self.SEP_CHARS:
-            rdr = csv.reader(lines, delimiter=sep_char)
-            cell_lengths = []
-            for row in rdr:
-                if len(row) > 1:
-                    cell_lengths += [len(cell) for cell in row]
-            if cell_lengths:
-                sep_variances[sep_char] = variance(cell_lengths)
-        if not sep_variances:
-            return ',', chain(lines, it)
-        for k in sep_variances:
-            sep_variances[k] += 0.1
-        # Prefer , if it's available and not too bad
-        if not sep_variances:   # There were no separations
-            best_sep = ','
-        else:
-            best_sep = min((item for item in sep_variances.items()), key=lambda (sep,var): var)
-        if ',' in sep_variances and best_sep[1] / sep_variances[','] > 0.9:
-            best_sep_char = ','
-        else:
-            best_sep_char = best_sep[0]
-        new_iter = chain(lines, it)
-        return best_sep_char, new_iter
 
     def _decode_row(self, row, encoding):
         result = []
@@ -101,18 +69,68 @@ def auto_unicode(bytes):
         return bytes.decode('utf-8', 'ignore')
 
 
-def line_iter(content_iter, eol):
-    '''Iterate over lines separated by an eol character'''
-    cur_buf = ''
-    for chunk in content_iter:
-        cur_buf += chunk
-        lines = cur_buf.split(eol)
-        for line in lines[:-1]:
-            yield line + eol
-        cur_buf = lines[-1]
-    if cur_buf:
-        for line in cur_buf.split(eol):
-            yield line + eol
+# From http://code.activestate.com/recipes/286165-ilines-universal-newlines-from-any-data-source/
+def ilines(source_iterable):
+    '''yield lines as in universal-newlines from a stream of data blocks'''
+    tail = ''
+    for block in source_iterable:
+        if not block:
+            continue
+        if tail.endswith('\015'):
+            yield tail[:-1] + '\012'
+            if block.startswith('\012'):
+                pos = 1
+            else:
+                tail = ''
+        else:
+            pos = 0
+        try:
+            while True: # While we are finding LF.
+                npos = block.index('\012', pos) + 1
+                try:
+                    rend = npos - 2
+                    rpos = block.index('\015', pos, rend)
+                    if pos:
+                        yield block[pos : rpos] + '\n'
+                    else:
+                        yield tail + block[:rpos] + '\n'
+                    pos = rpos + 1
+                    while True: # While CRs 'inside' the LF
+                        rpos = block.index('\015', pos, rend)
+                        yield block[pos : rpos] + '\n'
+                        pos = rpos + 1
+                except ValueError:
+                    pass
+                if '\015' == block[rend]:
+                    if pos:
+                        yield block[pos : rend] + '\n'
+                    else:
+                        yield tail + block[:rend] + '\n'
+                elif pos:
+                    yield block[pos : npos]
+                else:
+                    yield tail + block[:npos]
+                pos = npos
+        except ValueError:
+            pass
+        # No LFs left in block.  Do all but final CR (in case LF)
+        try:
+            while True:
+                rpos = block.index('\015', pos, -1)
+                if pos:
+                    yield block[pos : rpos] + '\n'
+                else:
+                    yield tail + block[:rpos] + '\n'
+                pos = rpos + 1
+        except ValueError:
+            pass
+
+        if pos:
+            tail = block[pos:]
+        else:
+            tail += block
+    if tail:
+        yield tail
 
 
 def accumulate_bytes(it, size):
@@ -127,18 +145,3 @@ def accumulate_bytes(it, size):
     except StopIteration:
         pass
     return ''.join(cur_buf)
-
-def accumulate_lines(it, count):
-    '''Accumulate up to `count` lines from a line iterator'''
-    result = []
-    try:
-        while len(result) < count:
-            result.append(it.next())
-    except StopIteration:
-        pass
-    return result
-
-
-def variance(items):
-    mean = 1.0 * sum(items) / len(items)
-    return sum((it-mean)**2 for it in items) / len(items)

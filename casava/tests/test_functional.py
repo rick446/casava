@@ -50,37 +50,6 @@ def test_weird_unicode():
     result = list(reader_impl.reader(fp))
     print result
 
-# Test variance
-def test_variance_zero():
-    zero = [1] * 50
-    assert_equal(reader_impl.variance(zero), 0)
-
-
-def test_variance_one():
-    assert_equal(reader_impl.variance([0,2]), 1)
-
-
-def test_variance_nonnegative():
-    assert_less(0, reader_impl.variance([-2, -1]))
-
-# Test line accumulation
-def test_acc_lines_small():
-    lines = list('12345')
-    it_lines = iter(lines)
-    prefix = reader_impl.accumulate_lines(it_lines, 2)
-    assert_equal(prefix, ['1', '2'])
-    remainder = list(it_lines)
-    assert_equal(remainder, ['3', '4', '5'])
-
-
-def test_acc_lines_lg():
-    lines = list('12345')
-    it_lines = iter(lines)
-    prefix = reader_impl.accumulate_lines(it_lines, 10)
-    assert_equal(prefix, lines)
-    remainder = list(it_lines)
-    assert_equal(remainder, [])
-
 # Test byte accumulation
 def test_acc_bytes_small():
     lines = 'This is a set of lines of varying length'.split()
@@ -99,16 +68,6 @@ def test_acc_bytes_large():
     assert_less_equal(len(prefix), 200)
     assert_equal([], list(it))
     assert_equal(prefix, ''.join(lines))
-
-
-# Test line iteration
-def test_iter_lines():
-    lines = 'This is a set of lines of varying length'.split()
-    lines = [line + '\n' for line in lines]
-    content = ''.join(lines)
-    content_iter = (''.join(ch) for ch in _chunk(content, 4))
-    new_lines = list(reader_impl.line_iter(content_iter, '\n'))
-    assert_equal(lines, new_lines)
 
 
 # Test auto unicode
