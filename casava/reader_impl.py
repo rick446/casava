@@ -7,11 +7,10 @@ import chardet
 
 
 log = logging.getLogger(__name__)
-re_newline = re.compile('(\r(?=[^\n]))|\r\n')
 
 
 class reader(object):
-    ENC_DETECTION_SIZE = 10 * 1024
+    ENC_DETECTION_SIZE = 100 * 1024
     SEP_DETECTION_SIZE = 1024
     SEP_CHARS = [',', ';', '\t']
 
@@ -25,12 +24,12 @@ class reader(object):
         self._sep_detection_size = sep_detection_size or self.SEP_DETECTION_SIZE
 
     def __iter__(self):
-        encoding = self._detect_encoding()
+        encoding, dialect = self._detect_encoding_dialect()
         log.info('detect encoding: %r', encoding)
-        cur_line_iter = line_iter(self.content_iter)
-        sep_char, cur_line_iter = self._detect_sep(cur_line_iter)
-        log.info('detect delimiter: %r', sep_char)
-        rdr = csv.reader(cur_line_iter, delimiter=sep_char)
+        log.info('detect eol     : %r', dialect.lineterminator)
+        log.info('detect delim   : %r', dialect.delimiter)
+        cur_line_iter = line_iter(self.content_iter, dialect.lineterminator)
+        rdr = csv.reader(cur_line_iter, dialect)
         try:
             while True:
                 row = rdr.next()
@@ -38,11 +37,17 @@ class reader(object):
         except StopIteration:
             pass
 
-    def _detect_encoding(self):
+    def _detect_encoding_dialect(self):
         content_header = accumulate_bytes(self.content_iter, self._enc_detection_size)
         encoding = chardet.detect(content_header)
+        dialect = csv.Sniffer().sniff(content_header)
+        if dialect.lineterminator not in content_header:
+            for eol in ['\r\n', '\n', '\r']:
+                if eol in content_header:
+                    dialect.lineterminator = eol
+                    break
         self.content_iter = chain([content_header], self.content_iter)
-        return encoding['encoding']
+        return encoding['encoding'], dialect
 
     def _detect_sep(self, it):
         lines = accumulate_lines(it, self._sep_detection_size)
@@ -93,19 +98,18 @@ def auto_unicode(bytes):
         return bytes.decode('utf-8', 'ignore')
 
 
-def line_iter(content_iter):
+def line_iter(content_iter, eol):
     '''Iterate over lines separated by an eol character'''
     cur_buf = ''
     for chunk in content_iter:
         cur_buf += chunk
-        cur_buf = re_newline.sub('\n', cur_buf)
-        lines = cur_buf.split('\n')
+        lines = cur_buf.split(eol)
         for line in lines[:-1]:
-            yield line + '\n'
+            yield line + eol
         cur_buf = lines[-1]
     if cur_buf:
-        for line in cur_buf.split('\n'):
-            yield line + '\n'
+        for line in cur_buf.split(eol):
+            yield line + eol
 
 
 def accumulate_bytes(it, size):

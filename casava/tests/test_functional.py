@@ -34,6 +34,12 @@ def test_crlf():
     assert_equal(result, [[u'really',u'easy',u'data'], [u'is',u'really',u'easy']])
 
 
+def test_quoted_newlines():
+    fp = StringIO('really,"easy\n",data\r\nis,really,easy')
+    result = list(reader_impl.reader(fp))
+    assert_equal(result, [[u'really',u'easy\n',u'data'], [u'is',u'really',u'easy']])
+
+
 def test_weird_unicode():
     zh_data = u'\u5e03\u4f9d\u65cf\u82d7\u65cf'
     lines = [
@@ -101,7 +107,7 @@ def test_iter_lines():
     lines = [line + '\n' for line in lines]
     content = ''.join(lines)
     content_iter = (''.join(ch) for ch in _chunk(content, 4))
-    new_lines = list(reader_impl.line_iter(content_iter))
+    new_lines = list(reader_impl.line_iter(content_iter, '\n'))
     assert_equal(lines, new_lines)
 
 
