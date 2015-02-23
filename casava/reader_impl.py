@@ -1,4 +1,3 @@
-import re
 import csv
 import logging
 from itertools import chain
@@ -28,12 +27,20 @@ class reader(object):
         log.info('detect encoding: %r', encoding)
         log.info('detect eol     : %r', dialect.lineterminator)
         log.info('detect delim   : %r', dialect.delimiter)
-        cur_line_iter = ilines(self.content_iter)
+        safe_content_iter = safe_for_ilines(self.content_iter)
+        cur_line_iter = ilines(safe_content_iter)
         rdr = csv.reader(cur_line_iter, dialect)
+        lineno = 0
         try:
             while True:
-                row = rdr.next()
-                yield self._decode_row(row, encoding)
+                lineno += 1
+                try:
+                    row = rdr.next()
+                    yield self._decode_row(row, encoding)
+                except StopIteration:
+                    raise
+                except Exception:
+                    log.exception('Error on line %d', lineno)
         except StopIteration:
             pass
 
@@ -69,16 +76,38 @@ def auto_unicode(bytes):
         return bytes.decode('utf-8', 'ignore')
 
 
+def safe_for_ilines(source_iterable, block_size=8192):
+    '''Yield blocks of an approximate size that *never* end with \r or \n'''
+    tail = ''
+    source_gen = iter(source_iterable)
+    while True:
+        while len(tail) > block_size:
+            endpos = block_size
+            while endpos and tail[endpos-1] in ('\r', '\n'):
+                endpos -= 1
+            if endpos == 0:
+                # Nothing but \r\n
+                break
+            to_yield, tail = tail[:endpos], tail[endpos:]
+            yield to_yield
+        try:
+            tail += source_gen.next()
+        except StopIteration:
+            break
+    yield tail
+
+
 # From http://code.activestate.com/recipes/286165-ilines-universal-newlines-from-any-data-source/
 def ilines(source_iterable):
     '''yield lines as in universal-newlines from a stream of data blocks'''
     tail = ''
     for block in source_iterable:
+        print len(block)
         if not block:
             continue
-        if tail.endswith('\015'):
-            yield tail[:-1] + '\012'
-            if block.startswith('\012'):
+        if tail.endswith('\r'):
+            yield tail[:-1] + '\n'
+            if block.startswith('\n'):
                 pos = 1
             else:
                 tail = ''
@@ -86,22 +115,22 @@ def ilines(source_iterable):
             pos = 0
         try:
             while True: # While we are finding LF.
-                npos = block.index('\012', pos) + 1
+                npos = block.index('\n', pos) + 1
                 try:
                     rend = npos - 2
-                    rpos = block.index('\015', pos, rend)
+                    rpos = block.index('\r', pos, rend)
                     if pos:
                         yield block[pos : rpos] + '\n'
                     else:
                         yield tail + block[:rpos] + '\n'
                     pos = rpos + 1
                     while True: # While CRs 'inside' the LF
-                        rpos = block.index('\015', pos, rend)
+                        rpos = block.index('\r', pos, rend)
                         yield block[pos : rpos] + '\n'
                         pos = rpos + 1
                 except ValueError:
                     pass
-                if '\015' == block[rend]:
+                if '\r' == block[rend]:
                     if pos:
                         yield block[pos : rend] + '\n'
                     else:
@@ -116,7 +145,7 @@ def ilines(source_iterable):
         # No LFs left in block.  Do all but final CR (in case LF)
         try:
             while True:
-                rpos = block.index('\015', pos, -1)
+                rpos = block.index('\r', pos, -1)
                 if pos:
                     yield block[pos : rpos] + '\n'
                 else:
