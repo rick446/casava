@@ -102,7 +102,6 @@ def ilines(source_iterable):
     '''yield lines as in universal-newlines from a stream of data blocks'''
     tail = ''
     for block in source_iterable:
-        print len(block)
         if not block:
             continue
         if tail.endswith('\r'):
