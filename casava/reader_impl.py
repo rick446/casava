@@ -46,7 +46,12 @@ class reader(object):
 
     def _detect_encoding_dialect(self):
         content_header = accumulate_bytes(self.content_iter, self._enc_detection_size)
-        encoding = chardet.detect(content_header)
+        if not isinstance(content_header, unicode):
+            encoding = chardet.detect(content_header)
+        else:  # CSV module expects bytes, so we force it.
+            encoding = dict(encoding='utf8')
+            content_header = content_header.encode('utf8')
+            self.content_iter = (s.encode('utf8') for s in self.content_iter)
         try:
             dialect = csv.Sniffer().sniff(content_header, delimiters=',;|\t\x1f')
         except csv.Error:
