@@ -9,17 +9,20 @@ CHANGES = open(os.path.join(here, 'CHANGES.txt')).read()
 
 setup(
     name='casava',
-    version='0.0',
+    version='0.1',
     description='casava: a csv reader thingy',
     long_description=README + '\n\n' + CHANGES,
     classifiers=[
     ],
-    author='',
-    author_email='',
-    url='',
+    author='Rick Copeland',
+    author_email='rick@arborian.com',
+    maintainer='Rick Copeland',
+    maintainer_email='rick@arborian.com',
+    url='https://github.com/synappio/casava',
     keywords='csv',
     packages=find_packages(),
     include_package_data=True,
+    package_data={'': ['README.txt', 'CHANGES.txt']},
     zip_safe=False,
     install_requires=[
         'chardet>=2.2.1',
